@@ -5,14 +5,14 @@
 #include <string.h>
 #include <dirent.h>
 #include <signal.h>
-#include <sys/resource.h>
 #include <sys/time.h>
-#include <sys/errno.h>
 
 #define TRUE 1
 #define FALSE 0
 #define CMD_LEN 80
 #define ARGS_SIZE 5
+
+#define SIGDET TRUE
 
 int is_running = TRUE;
 
@@ -35,6 +35,28 @@ void print_time(struct rusage *before, struct rusage *after) {
 
     timersub(&after->ru_utime, &before->ru_utime, &diff);
     printf("User time: %ld.%05i\n", diff.tv_sec, diff.tv_usec);
+}
+
+/**
+ * Print the exit status from the specified status var and print it and timings.
+ */
+void handle_status(struct rusage *before, struct rusage *after, int *status) {
+    if (*status != 0) {
+        if (WIFEXITED((*status))) {
+            print_time(before, after);
+            printf("Exited with status %d\n", WEXITSTATUS((*status)));
+
+
+        } else if (WIFSIGNALED((*status))) {
+            print_time(before, after);
+            printf("Exited through signal %d\n", WTERMSIG((*status)));
+
+
+        } else {
+            print_time(before, after);
+            puts("Exited abnormally");
+        }
+    }
 }
 
 
@@ -169,6 +191,7 @@ void foreground(char *args[ARGS_SIZE]) {
     }
 }
 
+
 /**
  * Start a background process.
  */
@@ -219,34 +242,52 @@ void run_child(char *const *args, const char *command) {/* Child */
 void poll_background_children() {
     struct rusage before;
     struct rusage after;
-
     int status = 0;
+
 
     getrusage(RUSAGE_CHILDREN, &before);
     waitpid(-1, &status, WNOHANG);
-    printf("Status: %d \n", status);
+    puts("CHACHACHA");
     getrusage(RUSAGE_CHILDREN, &after);
 
-    if (status != 0) {
-        if (WIFEXITED(status)) {
-            print_time(&before, &after);
-            printf("Exited with status %d\n", WEXITSTATUS(status));
+    handle_status(&before, &after, &status);
+
+}
 
 
-        } else if (WIFSIGNALED(status)) {
-            print_time(&before, &after);
-            printf("Exited through signal %d\n", WTERMSIG(status));
+void clean_up_after_children(int signal_number, siginfo_t *info, void *context) {
+    sighold(SIGCHLD);
+    if (signal_number != SIGCHLD) {
+        int status;
+        struct rusage before;
+        struct rusage after;
+        pid_t p;
 
+        getrusage(RUSAGE_CHILDREN, &before);
+        /*while ((p = waitpid(-1, &status, WNOHANG)) != -1) {
+            getrusage(RUSAGE_CHILDREN, &after);
+            handle_status(&before, &after, &status);
+            printf("HANDLED SOME IMPORTANT SHIT ASYNCRONOUSLY! %d\n", p);
 
-        } else {
-            print_time(&before, &after);
-            puts("Exited abnormally");
+            getrusage(RUSAGE_CHILDREN, &before);
+        }*/
 
+        if((p = waitpid(-1, &status, WNOHANG)) != -1) {
+            getrusage(RUSAGE_CHILDREN, &after);
+            handle_status(&before, &after, &status);
+            printf("HANDLED SOME IMPORTANT SHIT ASYNCRONOUSLY! %d\n", p);
         }
+
     }
+    sigrelse(SIGCHLD);
+}
 
-    printf("Status2: %d \n", status);
-
+void setup_signal_handler() {
+    struct sigaction sigchld_action;
+    memset (&sigchld_action, 0, sizeof(sigchld_action));
+    sigchld_action.sa_sigaction = &clean_up_after_children;
+    sigchld_action.sa_flags &= SA_SIGINFO | SA_RESTART | SA_NOCLDSTOP;
+    sigaction(SIGCHLD, &sigchld_action, NULL);
 }
 
 
@@ -259,7 +300,10 @@ int main(int argc, char *argv[]) {
 
         char *args[ARGS_SIZE] = {0};
 
-        poll_background_children();
+        if (SIGDET)
+            setup_signal_handler();
+        else
+            poll_background_children();
 
         /* Command prompt */
         printf(" ❤ ❤ ❤ ");
@@ -271,7 +315,7 @@ int main(int argc, char *argv[]) {
 
         len = count_non_null(args);
         if (*(args[len - 1]) == '&') {
-            (args[len - 1]) = 0;
+            args[len - 1] = 0;
             background(args);
 
         } else if (!handle_builtin(args)) {
