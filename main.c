@@ -19,16 +19,9 @@ int count_non_null(char *args[ARGS_SIZE]) {
     return count;
 }
 
-void shlorp(char *args[ARGS_SIZE], char *out[]) {
-    size_t i = 0;
-
-    while (args[i++]) {
-        out[i] = args[i];
-    }
-}
 
 /*
- * Returns an array of strings
+ * Splits a string into an array of strings with single space as delimiter.
  */
 void tokenize(char *command, char *into[ARGS_SIZE]) {
     char *ptr = command;
@@ -90,8 +83,8 @@ int handle_builtin(char *args[ARGS_SIZE]) {
         cmd_cd(args);
         return TRUE;
 
-    } else if (strcmp(args[0], BI_LS) == 0) {
-        cmd_ls();
+    } else if (strcmp(args[0], BI_EXIT) == 0) {
+        cmd_exit();
         return TRUE;
     }
 
@@ -102,17 +95,17 @@ int handle_builtin(char *args[ARGS_SIZE]) {
 /**
  * This function is where the proverbial magic sauce lives.
  */
-void forker(char *args[ARGS_SIZE]) {
+void foreground(char *args[ARGS_SIZE]) {
     char *command = args[0];
 
     pid_t pid;
     pid = fork();
     if (pid == 0) {
         /* Child */
-        char *child_args[1];
-        child_args[0] = NULL;
 
-        if (!handle_builtin(args)) {
+        if (strcmp(args[0], BI_LS) == 0) {
+            cmd_ls();
+        } else {
             if (execvp(command, args) == -1) {
                 printf("Unknown Command: %s\n", command);
                 exit(1);
@@ -139,7 +132,7 @@ void forker(char *args[ARGS_SIZE]) {
     } else {
         /* System fork err */
         printf("Fork failed");
-        exit(0xDEADBEEF);
+        exit(0xCC);
     }
 }
 
@@ -155,12 +148,9 @@ int main(int argc, char *argv[]) {
         remove_trailing_nl(command);
         tokenize(command, args);
 
-        if (strcmp(args[0], BI_EXIT) == 0)
-            cmd_exit();
-
         /* Now the fun stuff */
-        forker(args);
-
+        if (!handle_builtin(args))
+            foreground(args);
     }
 
     return 0;
