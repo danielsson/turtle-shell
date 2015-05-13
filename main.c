@@ -15,6 +15,14 @@
 
 #define SIGDET TRUE
 
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
 int is_running = TRUE;
 
 void run_child(char *const *args, const char *command);
@@ -32,10 +40,10 @@ void print_time(struct rusage *before, struct rusage *after) {
     struct timeval diff;
 
     timersub(&after->ru_stime, &before->ru_stime, &diff);
-    printf("System time: %ld.%05i\n", diff.tv_sec, diff.tv_usec);
+    printf(" \xE2\x8F\xB3  System time: %ld.%05i\t", diff.tv_sec, diff.tv_usec);
 
     timersub(&after->ru_utime, &before->ru_utime, &diff);
-    printf("User time: %ld.%05i\n", diff.tv_sec, diff.tv_usec);
+    printf("User time: %ld.%05i\t", diff.tv_sec, diff.tv_usec);
 }
 
 /**
@@ -101,7 +109,7 @@ void cmd_ls() {
     dir = opendir("./");
     if (dir != NULL) {
         while ((ep = readdir(dir))) {
-            puts(ep->d_name);
+            printf(" \xF0\x9F\x8D\x93  %s \n", ep->d_name);
         }
         closedir(dir);
     } else {
@@ -115,9 +123,17 @@ void cmd_ls() {
  * Execute the exit command.
  */
 void cmd_exit() {
-    printf("exiting\n");
-    kill(-2, SIGTERM);
+    kill(-2, SIGKILL);
+
+    if(!SIGDET) {
+        pid_t p;
+        int status;
+        while ((p = waitpid(-2, &status, WNOHANG)) != -1);
+    }
+
     is_running = FALSE;
+
+    printf("exiting\n");
 }
 
 /**
@@ -246,7 +262,7 @@ void poll_background_children() {
 
     getrusage(RUSAGE_CHILDREN, &before);
     waitpid(-1, &status, WNOHANG);
-    puts("CHACHACHA");
+
     getrusage(RUSAGE_CHILDREN, &after);
 
     handle_status(&before, &after, &status);
@@ -305,10 +321,13 @@ int main(int argc, char *argv[]) {
             poll_background_children();
 
         /* Command prompt */
-        printf(" ❤ ❤ ❤ ");
+        printf(" \xF0\x9F\x90\xA2  " ANSI_COLOR_GREEN);
         fgets(command, CMD_LEN, stdin);
         remove_trailing_nl(command);
         tokenize(command, args);
+
+
+        puts(ANSI_COLOR_RESET);
 
         /* Now the fun stuff */
 

@@ -2,6 +2,6 @@
 all: turtle
 	@echo ""
 
-turtle:
+turtle: main.c
 	gcc main.c -o turtle -ansi -g -Wall -pedantic
 
