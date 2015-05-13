@@ -5,6 +5,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <signal.h>
+#include <errno.h>
 #include <sys/time.h>
 
 #define TRUE 1
@@ -87,7 +88,8 @@ void remove_trailing_nl(char *str) {
     size_t len;
     len = strlen(str);
 
-    str[len - 1] = 0;
+    if (str[len-1] == '\n')
+        str[len - 1] = 0;
 }
 
 /**
@@ -168,8 +170,9 @@ void foreground(char *args[ARGS_SIZE]) {
             exit(EXIT_FAILURE);
         }
 
+        sighold(SIGCHLD);
         if (waitpid(pid, &status, 0) == -1) {
-            perror("waitpid failed\n");
+            printf("waitpid failed %d\n", errno);
         } else {
             getrusage(RUSAGE_CHILDREN, &after);
 
@@ -183,6 +186,7 @@ void foreground(char *args[ARGS_SIZE]) {
                 puts("Exited abnormally");
             }
         }
+        sigrelse(SIGCHLD);
 
     } else {
         /* System fork err */
@@ -217,16 +221,11 @@ void background(char *args[ARGS_SIZE]) {
  * Start a child process.
  */
 void run_child(char *const *args, const char *command) {/* Child */
-    int i;
     if (strcmp(args[0], BI_LS) == 0) {
         cmd_ls();
     } else {
         if (execvp(command, args) == -1) {
             printf("Unknown Command: %s\n", command);
-
-            for (i = 0; i < ARGS_SIZE; i++) {
-                puts(args[i]);
-            }
 
             exit(EXIT_FAILURE);
         }
