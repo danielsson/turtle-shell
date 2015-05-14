@@ -96,7 +96,7 @@ void remove_trailing_nl(char *str) {
     size_t len;
     len = strlen(str);
 
-    if (str[len-1] == '\n')
+    if (str[len - 1] == '\n')
         str[len - 1] = 0;
 }
 
@@ -125,7 +125,7 @@ void cmd_ls() {
 void cmd_exit() {
     kill(-2, SIGKILL);
 
-    if(!SIGDET) {
+    if (!SIGDET) {
         pid_t p;
         int status;
         while ((p = waitpid(-2, &status, WNOHANG)) != -1);
@@ -167,6 +167,7 @@ int handle_builtin(char *args[ARGS_SIZE]) {
  * This function is where the proverbial magic sauce lives.
  */
 void foreground(char *args[ARGS_SIZE]) {
+
     char *command = args[0];
 
     pid_t pid;
@@ -237,7 +238,9 @@ void background(char *args[ARGS_SIZE]) {
  * Start a child process.
  */
 void run_child(char *const *args, const char *command) {/* Child */
+
     if (strcmp(args[0], BI_LS) == 0) {
+
         cmd_ls();
     } else {
         if (execvp(command, args) == -1) {
@@ -271,27 +274,29 @@ void poll_background_children() {
 
 
 void clean_up_after_children(int signal_number, siginfo_t *info, void *context) {
+    printf("info: %i \n", info->si_status);
     sighold(SIGCHLD);
-    if (signal_number != SIGCHLD) {
+    if (signal_number == SIGCHLD) {
+
         int status;
         struct rusage before;
         struct rusage after;
         pid_t p;
 
         getrusage(RUSAGE_CHILDREN, &before);
-        /*while ((p = waitpid(-1, &status, WNOHANG)) != -1) {
+        while ((p = waitpid(-1, &status, WNOHANG)) != -1 && p != 0) {
             getrusage(RUSAGE_CHILDREN, &after);
             handle_status(&before, &after, &status);
             printf("HANDLED SOME IMPORTANT SHIT ASYNCRONOUSLY! %d\n", p);
 
             getrusage(RUSAGE_CHILDREN, &before);
-        }*/
+        }
 
-        if((p = waitpid(-1, &status, WNOHANG)) != -1) {
+        /*if(waitpid(-1, &status, WNOHANG) != -1) {
             getrusage(RUSAGE_CHILDREN, &after);
             handle_status(&before, &after, &status);
-            printf("HANDLED SOME IMPORTANT SHIT ASYNCRONOUSLY! %d\n", p);
-        }
+            printf("HANDLED SOME IMPORTANT SHIT ASYNCRONOUSLY! %d\n");
+        }*/
 
     }
     sigrelse(SIGCHLD);
@@ -311,18 +316,19 @@ int main(int argc, char *argv[]) {
     char command[CMD_LEN];
     int len;
 
+    if (SIGDET)
+        setup_signal_handler();
+    else
+        poll_background_children();
+
     while (is_running) {
-
         char *args[ARGS_SIZE] = {0};
-
-        if (SIGDET)
-            setup_signal_handler();
-        else
-            poll_background_children();
+        memset(command, 0, CMD_LEN);
 
         /* Command prompt */
         printf(" \xF0\x9F\x90\xA2  " ANSI_COLOR_GREEN);
         fgets(command, CMD_LEN, stdin);
+
         remove_trailing_nl(command);
         tokenize(command, args);
 
@@ -332,11 +338,13 @@ int main(int argc, char *argv[]) {
         /* Now the fun stuff */
 
         len = count_non_null(args);
+
         if (*(args[len - 1]) == '&') {
             args[len - 1] = 0;
             background(args);
 
-        } else if (!handle_builtin(args)) {
+
+        } else if (!handle_builtin(args) && strlen(args[0]) != 0) {
             foreground(args);
         }
 
