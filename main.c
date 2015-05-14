@@ -65,7 +65,11 @@ void handle_status(struct rusage *before, struct rusage *after, int *status) {
             print_time(before, after);
             puts("Exited abnormally");
         }
+    } else {
+        print_time(before, after);
+        printf("Exited with status %d\n", *status);
     }
+
 }
 
 
@@ -274,7 +278,7 @@ void poll_background_children() {
 
 
 void clean_up_after_children(int signal_number, siginfo_t *info, void *context) {
-    printf("info: %i \n", info->si_status);
+    
     sighold(SIGCHLD);
     if (signal_number == SIGCHLD) {
 
@@ -287,7 +291,7 @@ void clean_up_after_children(int signal_number, siginfo_t *info, void *context) 
         while ((p = waitpid(-1, &status, WNOHANG)) != -1 && p != 0) {
             getrusage(RUSAGE_CHILDREN, &after);
             handle_status(&before, &after, &status);
-            printf("HANDLED SOME IMPORTANT SHIT ASYNCRONOUSLY! %d\n", p);
+
 
             getrusage(RUSAGE_CHILDREN, &before);
         }
@@ -316,10 +320,7 @@ int main(int argc, char *argv[]) {
     char command[CMD_LEN];
     int len;
 
-    if (SIGDET)
-        setup_signal_handler();
-    else
-        poll_background_children();
+
 
     while (is_running) {
         char *args[ARGS_SIZE] = {0};
@@ -328,6 +329,11 @@ int main(int argc, char *argv[]) {
         /* Command prompt */
         printf(" \xF0\x9F\x90\xA2  " ANSI_COLOR_GREEN);
         fgets(command, CMD_LEN, stdin);
+
+        if (SIGDET)
+            setup_signal_handler();
+        else
+            poll_background_children();
 
         remove_trailing_nl(command);
         tokenize(command, args);
