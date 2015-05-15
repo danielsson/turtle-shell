@@ -10,6 +10,8 @@
 
 #define TRUE 1
 #define FALSE 0
+#define READ 0
+#define WRITE 1
 #define CMD_LEN 80
 #define ARGS_SIZE 5
 
@@ -22,6 +24,7 @@
 #define ANSI_COLOR_MAGENTA "\x1b[35m"
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
+
 
 int is_running = TRUE;
 
@@ -149,6 +152,72 @@ void cmd_cd(char *args[ARGS_SIZE]) {
     }
 }
 
+void create_pipe(int p[2]) {
+    if(pipe(p) == -1) {
+        perror("ERROR CREATING PIPE");
+    }
+}
+
+void close_pipe(int p[2]) {
+    if(close(p[0]) == -1) {
+        perror("ERROR CLOSING READ");
+    }
+    if(close(p[1]) == -1) {
+        perror("ERROR CLOSING WRITE");
+    }
+}
+
+/*
+ * PIPING, looked at this source: http://stackoverflow.com/questions/16174187/cant-pipe-to-less1
+ */
+
+void cmd_check_env(char * args[ARGS_SIZE]) {
+    int p_1[2], p_2[2], p_3[2], p_4[2];
+    int pid_1, pid_2, pid_3, pid_4;
+    char * argsLess[] = {"less", NULL};
+
+    pid_1 = fork();
+
+    create_pipe(p_1);
+    create_pipe(p_2);
+
+    if(pid_1 == 0) {
+        if(dup2(p_1[WRITE], STDOUT_FILENO) == -1) {
+            perror("ERROR, DUP2");
+        }
+        close_pipe(p_1);
+        close_pipe(p_2);
+
+        if (execvp("sort", args) == -1){
+            perror("EXECUTION ERROR");
+        }
+
+    } else if(pid_1 == -1){
+        perror("FORK ERROR");
+    } else {
+        pid_3 = fork();
+
+        if(pid_3 == 0) {
+            if (dup2(p_2[READ], STDIN_FILENO) == -1) {
+                perror("ERROR, DUP2");
+            }
+        } else if(pid_3 == -1) {
+            perror("FORK ERROR");
+        }
+
+        close_pipe(p_2);
+        close_pipe(p_1);
+        waitpid(pid_3, NULL, 0);
+
+
+
+        if (execvp(argsLess[0], argsLess) == -1){
+            perror("ERROR IN PAGER");
+        }
+    }
+}
+
+
 /**
  * Handle the built in commands: cd and exit.
  */
@@ -160,6 +229,9 @@ int handle_builtin(char *args[ARGS_SIZE]) {
 
     } else if (strcmp(args[0], BI_EXIT) == 0) {
         cmd_exit();
+        return TRUE;
+    } else if (strcmp(args[0], BI_CHKENV) == 0) {
+        cmd_check_env(args);
         return TRUE;
     }
 
