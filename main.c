@@ -13,7 +13,7 @@
 #define CMD_LEN 80
 #define ARGS_SIZE 5
 
-#define SIGDET TRUE
+#define SIGDET FALSE
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -244,7 +244,6 @@ void background(char *args[ARGS_SIZE]) {
 void run_child(char *const *args, const char *command) {/* Child */
 
     if (strcmp(args[0], BI_LS) == 0) {
-
         cmd_ls();
     } else {
         if (execvp(command, args) == -1) {
@@ -265,20 +264,22 @@ void poll_background_children() {
     struct rusage before;
     struct rusage after;
     int status = 0;
-
+    pid_t p;
 
     getrusage(RUSAGE_CHILDREN, &before);
-    waitpid(-1, &status, WNOHANG);
-
+    p = waitpid(-1, &status, WNOHANG);
     getrusage(RUSAGE_CHILDREN, &after);
 
-    handle_status(&before, &after, &status);
+    if(p > 0) {
+        printf("Terminated in background: \n");
+        handle_status(&before, &after, &status);
+    }
 
 }
 
 
 void clean_up_after_children(int signal_number, siginfo_t *info, void *context) {
-    
+
     sighold(SIGCHLD);
     if (signal_number == SIGCHLD) {
 
@@ -292,16 +293,8 @@ void clean_up_after_children(int signal_number, siginfo_t *info, void *context) 
             getrusage(RUSAGE_CHILDREN, &after);
             handle_status(&before, &after, &status);
 
-
             getrusage(RUSAGE_CHILDREN, &before);
         }
-
-        /*if(waitpid(-1, &status, WNOHANG) != -1) {
-            getrusage(RUSAGE_CHILDREN, &after);
-            handle_status(&before, &after, &status);
-            printf("HANDLED SOME IMPORTANT SHIT ASYNCRONOUSLY! %d\n");
-        }*/
-
     }
     sigrelse(SIGCHLD);
 }
@@ -321,19 +314,20 @@ int main(int argc, char *argv[]) {
     int len;
 
 
-
     while (is_running) {
         char *args[ARGS_SIZE] = {0};
         memset(command, 0, CMD_LEN);
-
-        /* Command prompt */
-        printf(" \xF0\x9F\x90\xA2  " ANSI_COLOR_GREEN);
-        fgets(command, CMD_LEN, stdin);
 
         if (SIGDET)
             setup_signal_handler();
         else
             poll_background_children();
+
+        /* Command prompt */
+        printf(" \xF0\x9F\x90\xA2  " ANSI_COLOR_GREEN);
+        fgets(command, CMD_LEN, stdin);
+
+
 
         remove_trailing_nl(command);
         tokenize(command, args);
