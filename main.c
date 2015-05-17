@@ -168,7 +168,7 @@ void close_pipe(int p[2]) {
 }
 
 /*
- * PIPING, looked at this source: http://stackoverflow.com/questions/16174187/cant-pipe-to-less1
+ * PIPING
  */
 
 void cmd_check_env(char * args[ARGS_SIZE]) {
