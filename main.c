@@ -128,7 +128,11 @@ void cmd_ls() {
     dir = opendir("./");
     if (dir != NULL) {
         while ((ep = readdir(dir))) {
-            printf(" \xF0\x9F\x8D\x93  %s \n", ep->d_name);
+            if(ep->d_type == DT_DIR) {
+                printf(" \xF0\x9F\x8D\xB0  %s \n", ep->d_name);
+            } else {
+                printf(" \xF0\x9F\x8D\x93  %s \n", ep->d_name);
+            }
         }
         closedir(dir);
     } else {
@@ -250,9 +254,8 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
         return_value = dup2(fd_descriptor_env_sort[PIPE_WRITE], STDOUT_FILENO);
         check_return_value(return_value, "Error: cannot dup2 1");
 
-        close_pipe(fd_descriptor_env_sort[PIPE_READ]);
-        close_pipe(fd_descriptor_sort_pager[PIPE_READ]);
-        close_pipe(fd_descriptor_sort_pager[PIPE_WRITE]);
+        close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager);
+
         print_environment();
         exit(EXIT_SUCCESS);
 
@@ -267,12 +270,11 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
         return_value = dup2(fd_descriptor_env_sort[PIPE_READ], STDIN_FILENO);
         check_return_value(return_value, "Error: cannot dup2 2");
 
-        close_pipe(fd_descriptor_env_sort[PIPE_WRITE]);
-
         return_value = dup2(fd_descriptor_sort_pager[PIPE_WRITE], STDOUT_FILENO);
         check_return_value(return_value, "Error: cannot dup2 3");
 
-        close_pipe(fd_descriptor_sort_pager[PIPE_READ]);
+        close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager);
+
         args[0] = "sort";
         return_value = execvp(args[0], args);
         check_return_value(return_value, "Error: execution failed.");
@@ -289,16 +291,13 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
         return_value = dup2(fd_descriptor_sort_pager[PIPE_READ], STDIN_FILENO);
         check_return_value(return_value, "Error: cannot dup2 4");
 
-        close_pipe(fd_descriptor_sort_pager[PIPE_WRITE]);
-        close_pipe(fd_descriptor_env_sort[PIPE_READ]);
-        close_pipe(fd_descriptor_env_sort[PIPE_WRITE]);
+        close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager);
 
         if(getenv("PAGER") != NULL) {
             argp[0] = getenv("PAGER");
         }
 
         return_value = execvp(argp[0], argp);
-
         check_return_value(return_value, "Error: execution failed.");
 
     } else if (pager_child == -1) {
