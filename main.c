@@ -10,8 +10,8 @@
 
 #define TRUE 1
 #define FALSE 0
-#define READ 0
-#define WRITE 1
+#define PIPE_READ 0
+#define PIPE_WRITE 1
 #define CMD_LEN 80
 #define ARGS_SIZE 5
 
@@ -26,15 +26,24 @@
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
 
+extern char **environ;
+
 int is_running = TRUE;
 
 void run_child(char *const *args, const char *command);
 
+
+void close_all_pipes(const int *fd_descriptor_env_sort, const int *fd_descriptor_sort_pager);
+
+/**
+ * Count the number of arguments in a string.
+ */
 int count_non_null(char *args[ARGS_SIZE]) {
     int count;
     for (count = 0; count < ARGS_SIZE && args[count] != NULL; count++);
     return count;
 }
+
 
 /**
  * Print the system and user time for a terminated process.
@@ -49,8 +58,10 @@ void print_time(struct rusage *before, struct rusage *after) {
     printf("User time: %ld.%05i\t", diff.tv_sec, diff.tv_usec);
 }
 
+
 /**
- * Print the exit status from the specified status var and print it and timings.
+ * Print the exit status from the specified status var. Also print
+ * the system and user time for the terminated process.
  */
 void handle_status(struct rusage *before, struct rusage *after, int *status) {
     if (*status != 0) {
@@ -95,6 +106,7 @@ void tokenize(char *command, char *into[ARGS_SIZE]) {
         ptr++;
     }
 }
+
 
 /**
  * Remove the nl character from the arguments.
@@ -153,17 +165,67 @@ void cmd_cd(char *args[ARGS_SIZE]) {
 }
 
 void create_pipe(int p[2]) {
-    if(pipe(p) == -1) {
+    if (pipe(p) == -1) {
         perror("ERROR CREATING PIPE");
+        exit(EXIT_FAILURE);
     }
 }
 
-void close_pipe(int p[2]) {
-    if(close(p[0]) == -1) {
-        perror("ERROR CLOSING READ");
+void close_pipe(int fd) {
+    if (close(fd) == -1) {
+        fprintf(stderr, "Error closing: %i", fd);
+        printf("errno: %i", errno);
+        exit(EXIT_FAILURE);
     }
-    if(close(p[1]) == -1) {
-        perror("ERROR CLOSING WRITE");
+}
+
+void get_env() {
+    char **pt = environ;
+
+    do {
+        puts(*pt);
+    } while (*++pt);
+}
+
+
+void check_return_value(int return_value, const char *msg) {
+    if (return_value == -1) {
+        perror(msg);
+        exit(EXIT_FAILURE);
+    }
+}
+
+
+void close_all_pipes(const int *fd_descriptor_env_sort, const int *fd_descriptor_sort_pager) {
+    close_pipe(fd_descriptor_env_sort[PIPE_WRITE]);
+    close_pipe(fd_descriptor_env_sort[PIPE_READ]);
+    close_pipe(fd_descriptor_sort_pager[PIPE_WRITE]);
+    close_pipe(fd_descriptor_sort_pager[PIPE_READ]);
+}
+
+
+void wait_for_child() {
+    int status;
+    pid_t child_pid;
+
+    child_pid = wait(&status);
+    check_return_value(child_pid, "Wait failed.");
+
+    if (WIFEXITED((status))) {
+        int child_status = WEXITSTATUS((status));
+
+        if (0 != child_status) /* child had problems */
+        {
+            fprintf(stderr, "Child (pid %ld) failed with exit code %d\n",
+                    (long int) child_pid, child_status);
+        }
+    } else {
+        if (WIFSIGNALED((status))) /* child-processen avbröts av signal */
+        {
+            int child_signal = WTERMSIG((status));
+            fprintf(stderr, "Child (pid %ld) was terminated by signal no. %d\n",
+                    (long int) child_pid, child_signal);
+        }
     }
 }
 
@@ -171,51 +233,88 @@ void close_pipe(int p[2]) {
  * PIPING
  */
 
-void cmd_check_env(char * args[ARGS_SIZE]) {
-    int p_1[2], p_2[2], p_3[2], p_4[2];
-    int pid_1, pid_2, pid_3, pid_4;
-    char * argsLess[] = {"less", NULL};
+void cmd_check_env(char *args[ARGS_SIZE]) {
+    int fd_descriptor_env_sort[2];
+    int fd_descriptor_sort_pager[2];
+    pid_t env_child, sort_child, pager_child;
+    int return_value;
+    char *empty_args[1] = {NULL};
 
-    pid_1 = fork();
+    sighold(SIGCHLD);
 
-    create_pipe(p_1);
-    create_pipe(p_2);
+    create_pipe(fd_descriptor_env_sort);
 
-    if(pid_1 == 0) {
-        if(dup2(p_1[WRITE], STDOUT_FILENO) == -1) {
-            perror("ERROR, DUP2");
-        }
-        close_pipe(p_1);
-        close_pipe(p_2);
+    //printf("%i, %i", fd_descriptor_env_sort[PIPE_READ], fd_descriptor_env_sort[PIPE_WRITE]);
 
-        if (execvp("sort", args) == -1){
-            perror("EXECUTION ERROR");
-        }
+    create_pipe(fd_descriptor_sort_pager);
 
-    } else if(pid_1 == -1){
-        perror("FORK ERROR");
-    } else {
-        pid_3 = fork();
+    env_child = fork();
 
-        if(pid_3 == 0) {
-            if (dup2(p_2[READ], STDIN_FILENO) == -1) {
-                perror("ERROR, DUP2");
-            }
-        } else if(pid_3 == -1) {
-            perror("FORK ERROR");
-        }
+    if (env_child == 0) {
+        return_value = dup2(fd_descriptor_env_sort[PIPE_WRITE], STDOUT_FILENO);
+        check_return_value(return_value, "Error: cannot dup2 1");
 
-        close_pipe(p_2);
-        close_pipe(p_1);
-        waitpid(pid_3, NULL, 0);
+        fprintf(stderr, "%i, %i", fd_descriptor_env_sort[PIPE_READ], fd_descriptor_env_sort[PIPE_WRITE]);
 
+        close_pipe(fd_descriptor_env_sort[PIPE_READ]);
+        get_env();
+        exit(EXIT_SUCCESS);
 
-
-        if (execvp(argsLess[0], argsLess) == -1){
-            perror("ERROR IN PAGER");
-        }
+    } else if (env_child == -1) {
+        perror("Error forking.");
+        exit(EXIT_FAILURE);
     }
+
+    sort_child = fork();
+
+    if (sort_child == 0) {
+        return_value = dup2(fd_descriptor_env_sort[PIPE_READ], STDIN_FILENO);
+        check_return_value(return_value, "Error: cannot dup2 2");
+
+        fprintf(stderr, "%i, %i", fd_descriptor_env_sort[PIPE_READ], fd_descriptor_env_sort[PIPE_WRITE]);
+
+        close_pipe(fd_descriptor_env_sort[PIPE_WRITE]);
+        return_value = dup2(fd_descriptor_sort_pager[PIPE_WRITE], STDOUT_FILENO);
+        check_return_value(return_value, "Error: cannot dup2 3");
+
+        close_pipe(fd_descriptor_sort_pager[PIPE_READ]);
+        return_value = execvp("sort", empty_args);
+        check_return_value(return_value, "Error: execution failed.");
+
+    } else if (sort_child == -1) {
+        perror("Error forking.");
+        exit(EXIT_FAILURE);
+    }
+
+    pager_child = fork();
+
+    if (pager_child == 0) {
+        return_value = dup2(fd_descriptor_sort_pager[PIPE_READ], STDIN_FILENO);
+        check_return_value(return_value, "Error: cannot dup2 4");
+        fprintf(stderr, "Åke %i, %i}", fd_descriptor_sort_pager[PIPE_READ], fd_descriptor_sort_pager[PIPE_WRITE]);
+        close_pipe(fd_descriptor_sort_pager[PIPE_WRITE]);
+
+        return_value = execvp("less", empty_args);
+
+        check_return_value(return_value, "Error: execution failed.");
+
+    } else if (pager_child == -1) {
+        perror("Error forking.");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("%i %i %i\n", env_child, sort_child, pager_child);
+
+    close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager);
+
+    wait_for_child();
+    wait_for_child();
+    wait_for_child();
+
+    sigrelse(SIGCHLD);
 }
+
+
 
 
 /**
@@ -240,7 +339,7 @@ int handle_builtin(char *args[ARGS_SIZE]) {
 
 
 /**
- * This function is where the proverbial magic sauce lives.
+ * Start a process in the foreground and wait for the process to finish.
  */
 void foreground(char *args[ARGS_SIZE]) {
 
@@ -264,6 +363,7 @@ void foreground(char *args[ARGS_SIZE]) {
         }
 
         sighold(SIGCHLD);
+
         if (waitpid(pid, &status, 0) == -1) {
             printf("waitpid failed %d\n", errno);
         } else {
@@ -328,10 +428,10 @@ void run_child(char *const *args, const char *command) {/* Child */
     exit(99);
 }
 
+
 /**
  * Poll for any terminated background processes.
  */
-
 void poll_background_children() {
     struct rusage before;
     struct rusage after;
@@ -342,7 +442,7 @@ void poll_background_children() {
     p = waitpid(-1, &status, WNOHANG);
     getrusage(RUSAGE_CHILDREN, &after);
 
-    if(p > 0) {
+    if (p > 0) {
         printf("Terminated in background: \n");
         handle_status(&before, &after, &status);
     }
@@ -350,6 +450,9 @@ void poll_background_children() {
 }
 
 
+/**
+ * Detect terminated processes by signals and handle the exit status.
+ */
 void clean_up_after_children(int signal_number, siginfo_t *info, void *context) {
 
     sighold(SIGCHLD);
@@ -371,6 +474,9 @@ void clean_up_after_children(int signal_number, siginfo_t *info, void *context) 
     sigrelse(SIGCHLD);
 }
 
+/**
+ * Set up a signal handler.
+ */
 void setup_signal_handler() {
     struct sigaction sigchld_action;
     memset (&sigchld_action, 0, sizeof(sigchld_action));
@@ -380,6 +486,9 @@ void setup_signal_handler() {
 }
 
 
+/**
+ * Get arguments from standard in and execute the commands. e
+ */
 int main(int argc, char *argv[]) {
 
     char command[CMD_LEN];
@@ -398,7 +507,6 @@ int main(int argc, char *argv[]) {
         /* Command prompt */
         printf(" \xF0\x9F\x90\xA2  " ANSI_COLOR_GREEN);
         fgets(command, CMD_LEN, stdin);
-
 
 
         remove_trailing_nl(command);
@@ -421,6 +529,6 @@ int main(int argc, char *argv[]) {
         }
 
     }
-
+    puts("TODO: Fix the exit command and set up a signal handler for it. ");
     return 0;
 }
