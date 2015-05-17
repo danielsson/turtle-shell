@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <sys/time.h>
+#include <sys/syslimits.h>
 
 #define TRUE 1
 #define FALSE 0
@@ -24,14 +25,14 @@
 #define ANSI_COLOR_MAGENTA "\x1b[35m"
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
-
+#define putz puts
 
 extern char **environ;
 
 int is_running = TRUE;
+char last_dir[PATH_MAX] = {0};
 
 void run_child(char *const *args, const char *command);
-
 
 void close_all_pipes(const int *fd_descriptor_env_sort, const int *fd_descriptor_sort_pager);
 
@@ -77,7 +78,7 @@ void handle_status(struct rusage *before, struct rusage *after, int *status) {
 
         } else {
             print_time(before, after);
-            puts("Exited abnormally");
+            putz("Exited abnormally");
         }
     } else {
         print_time(before, after);
@@ -126,6 +127,7 @@ void cmd_ls() {
     DIR *dir;
     struct dirent *ep;
     dir = opendir("./");
+    putz("");
     if (dir != NULL) {
         while ((ep = readdir(dir))) {
             printf(" \xF0\x9F\x8D\x93  %s \n", ep->d_name);
@@ -159,6 +161,19 @@ void cmd_exit() {
  * Execute the cd command.
  */
 void cmd_cd(char *args[ARGS_SIZE]) {
+    char current[PATH_MAX];
+    getcwd((char *) &current, PATH_MAX);
+
+    if (args[1][0] == '-' && last_dir[0] != 0) {
+        chdir((const char *) &last_dir);
+        return;
+    } else if (args[1][0] == '-') {
+        putz("No previous dir");
+        return;
+    }
+
+    strcpy(last_dir, current);
+
     if (chdir(args[1]) == -1) {
         perror("Failed to chdir");
     }
@@ -183,7 +198,7 @@ void print_environment() {
     char **pt = environ;
 
     do {
-        puts(*pt);
+        putz(*pt);
     } while (*++pt);
 }
 
@@ -377,7 +392,7 @@ void foreground(char *args[ARGS_SIZE]) {
             } else if (WIFSIGNALED(status)) {
                 printf("Exited through signal %d\n", WTERMSIG(status));
             } else {
-                puts("Exited abnormally");
+                putz("Exited abnormally");
             }
         }
         sigrelse(SIGCHLD);
@@ -514,7 +529,7 @@ int main(int argc, char *argv[]) {
         tokenize(command, args);
 
 
-        puts(ANSI_COLOR_RESET);
+        putz(ANSI_COLOR_RESET);
 
         /* Now the fun stuff */
 
@@ -530,6 +545,6 @@ int main(int argc, char *argv[]) {
         }
 
     }
-    puts("TODO: Fix the exit command and set up a signal handler for it. ");
+    putz("TODO: Fix the exit command and set up a signal handler for it. ");
     return 0;
 }
