@@ -268,6 +268,7 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
     sort_child = fork();
 
     if (sort_child == 0) {
+        char * argp[] = {"sort", NULL};
         return_value = dup2(fd_descriptor_env_sort[PIPE_READ], STDIN_FILENO);
         check_return_value(return_value, "Error: cannot dup2 2");
 
@@ -278,7 +279,7 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
         check_return_value(return_value, "Error: cannot dup2 3");
 
         close_pipe(fd_descriptor_sort_pager[PIPE_READ]);
-        return_value = execvp("sort", empty_args);
+        return_value = execvp("sort", argp);
         check_return_value(return_value, "Error: execution failed.");
 
     } else if (sort_child == -1) {
@@ -289,12 +290,13 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
     pager_child = fork();
 
     if (pager_child == 0) {
+        char * argp[] = {"less", NULL};
         return_value = dup2(fd_descriptor_sort_pager[PIPE_READ], STDIN_FILENO);
         check_return_value(return_value, "Error: cannot dup2 4");
         fprintf(stderr, "Åke %i, %i}", fd_descriptor_sort_pager[PIPE_READ], fd_descriptor_sort_pager[PIPE_WRITE]);
         close_pipe(fd_descriptor_sort_pager[PIPE_WRITE]);
 
-        return_value = execvp("less", empty_args);
+        return_value = execvp("less", argp);
 
         check_return_value(return_value, "Error: execution failed.");
 
