@@ -179,7 +179,7 @@ void close_pipe(int fd) {
     }
 }
 
-void get_env() {
+void print_environment() {
     char **pt = environ;
 
     do {
@@ -238,14 +238,10 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
     int fd_descriptor_sort_pager[2];
     pid_t env_child, sort_child, pager_child;
     int return_value;
-    char *empty_args[1] = {NULL};
 
     sighold(SIGCHLD);
 
     create_pipe(fd_descriptor_env_sort);
-
-    //printf("%i, %i", fd_descriptor_env_sort[PIPE_READ], fd_descriptor_env_sort[PIPE_WRITE]);
-
     create_pipe(fd_descriptor_sort_pager);
 
     env_child = fork();
@@ -254,10 +250,10 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
         return_value = dup2(fd_descriptor_env_sort[PIPE_WRITE], STDOUT_FILENO);
         check_return_value(return_value, "Error: cannot dup2 1");
 
-        fprintf(stderr, "%i, %i", fd_descriptor_env_sort[PIPE_READ], fd_descriptor_env_sort[PIPE_WRITE]);
-
         close_pipe(fd_descriptor_env_sort[PIPE_READ]);
-        get_env();
+        close_pipe(fd_descriptor_sort_pager[PIPE_READ]);
+        close_pipe(fd_descriptor_sort_pager[PIPE_WRITE]);
+        print_environment();
         exit(EXIT_SUCCESS);
 
     } else if (env_child == -1) {
@@ -268,18 +264,17 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
     sort_child = fork();
 
     if (sort_child == 0) {
-        char * argp[] = {"sort", NULL};
         return_value = dup2(fd_descriptor_env_sort[PIPE_READ], STDIN_FILENO);
         check_return_value(return_value, "Error: cannot dup2 2");
 
-        fprintf(stderr, "%i, %i", fd_descriptor_env_sort[PIPE_READ], fd_descriptor_env_sort[PIPE_WRITE]);
-
         close_pipe(fd_descriptor_env_sort[PIPE_WRITE]);
+
         return_value = dup2(fd_descriptor_sort_pager[PIPE_WRITE], STDOUT_FILENO);
         check_return_value(return_value, "Error: cannot dup2 3");
 
         close_pipe(fd_descriptor_sort_pager[PIPE_READ]);
-        return_value = execvp("sort", argp);
+        args[0] = "sort";
+        return_value = execvp(args[0], args);
         check_return_value(return_value, "Error: execution failed.");
 
     } else if (sort_child == -1) {
@@ -293,10 +288,16 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
         char * argp[] = {"less", NULL};
         return_value = dup2(fd_descriptor_sort_pager[PIPE_READ], STDIN_FILENO);
         check_return_value(return_value, "Error: cannot dup2 4");
-        fprintf(stderr, "Åke %i, %i}", fd_descriptor_sort_pager[PIPE_READ], fd_descriptor_sort_pager[PIPE_WRITE]);
-        close_pipe(fd_descriptor_sort_pager[PIPE_WRITE]);
 
-        return_value = execvp("less", argp);
+        close_pipe(fd_descriptor_sort_pager[PIPE_WRITE]);
+        close_pipe(fd_descriptor_env_sort[PIPE_READ]);
+        close_pipe(fd_descriptor_env_sort[PIPE_WRITE]);
+
+        if(getenv("PAGER") != NULL) {
+            argp[0] = getenv("PAGER");
+        }
+
+        return_value = execvp(argp[0], argp);
 
         check_return_value(return_value, "Error: execution failed.");
 
@@ -304,8 +305,6 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
         perror("Error forking.");
         exit(EXIT_FAILURE);
     }
-
-    printf("%i %i %i\n", env_child, sort_child, pager_child);
 
     close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager);
 
