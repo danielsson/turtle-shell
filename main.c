@@ -16,7 +16,7 @@
 #define CMD_LEN 80
 #define ARGS_SIZE 5
 
-#define SIGDET FALSE
+#define SIGDET TRUE
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -148,6 +148,7 @@ void cmd_ls() {
  * Execute the exit command.
  */
 void cmd_exit() {
+
     kill(-2, SIGKILL);
 
     if (!SIGDET) {
@@ -372,6 +373,7 @@ void foreground(char *args[ARGS_SIZE]) {
         struct rusage before;
         struct rusage after;
 
+
         if (getrusage(RUSAGE_CHILDREN, &before) == -1) {
             perror("Catastrophic failure");
             exit(EXIT_FAILURE);
@@ -412,9 +414,13 @@ void background(char *args[ARGS_SIZE]) {
     char *command = args[0];
 
     pid_t pid;
+
+    signal(SIGINT, SIG_IGN);
+
     pid = fork();
 
     if (pid == 0) {
+
         run_child(args, command);
         return;
 
@@ -479,6 +485,7 @@ void clean_up_after_children(int signal_number, siginfo_t *info, void *context) 
         pid_t p;
 
         getrusage(RUSAGE_CHILDREN, &before);
+        printf("Terminated in background: \n");
         while ((p = waitpid(-1, &status, WNOHANG)) != -1 && p != 0) {
             getrusage(RUSAGE_CHILDREN, &after);
             handle_status(&before, &after, &status);
@@ -500,6 +507,20 @@ void setup_signal_handler() {
     sigaction(SIGCHLD, &sigchld_action, NULL);
 }
 
+static void handle_interrupt(int sig) {
+
+}
+
+
+void setup_interrupt_signal_handler() {
+    struct sigaction sa;
+    sa.sa_handler = handle_interrupt;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP; /* Restart functions if
+                                 interrupted by handler */
+    if (sigaction(SIGINT, &sa, NULL) == -1)
+        /* Handle error */;
+}
 
 /**
  * Get arguments from standard in and execute the commands. e
@@ -518,6 +539,8 @@ int main(int argc, char *argv[]) {
             setup_signal_handler();
         else
             poll_background_children();
+
+        setup_interrupt_signal_handler();
 
         /* Command prompt */
         printf(" \xF0\x9F\x90\xA2  " ANSI_COLOR_GREEN);
