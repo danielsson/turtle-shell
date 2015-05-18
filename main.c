@@ -508,7 +508,7 @@ void setup_signal_handler() {
 }
 
 static void handle_interrupt(int sig) {
-
+    /* THIS IS WHERE THE MAGIC HAPPENS */
 }
 
 
