@@ -20,7 +20,7 @@
 #define SIGDET TRUE
 
 #ifdef __APPLE__
-#define SAY_TURTLE TRUE
+#define SAY_TURTLE FALSE
 #else
 #define SAY_TURTLE FALSE
 #endif
@@ -531,25 +531,25 @@ void poll_background_children() {
  * Detect terminated processes by signals and handle the exit status.
  */
 void clean_up_after_children(int signal_number, siginfo_t *info, void *context) {
+    int status;
+    struct rusage before;
+    struct rusage after;
+    pid_t p;
 
-    sighold(SIGCHLD);
     if (signal_number == SIGCHLD) {
-
-        int status;
-        struct rusage before;
-        struct rusage after;
-        pid_t p;
+        sighold(SIGCHLD);
 
         getrusage(RUSAGE_CHILDREN, &before);
-        printf("Terminated in background: \n");
         while ((p = waitpid(-1, &status, WNOHANG)) != -1 && p != 0) {
             getrusage(RUSAGE_CHILDREN, &after);
+            printf("Terminated in background: \n");
             handle_status(&before, &after, &status);
 
             getrusage(RUSAGE_CHILDREN, &before);
         }
+
+        sigrelse(SIGCHLD);
     }
-    sigrelse(SIGCHLD);
 }
 
 /**
@@ -582,9 +582,31 @@ void setup_interrupt_signal_handler() {
 
 }
 
+static void handle_sigterm(int sig) {
+    int status;
+    struct rusage before;
+    struct rusage after;
+    
+
+    if(sig == SIGTERM) {
+        sighold(SIGTERM);
+
+        getrusage(RUSAGE_CHILDREN, &before);
+        if(waitpid(-1, &status, WNOHANG) == -1) return;
+        while(waitpid(-1, &status, WNOHANG) == 0) {
+            getrusage(RUSAGE_CHILDREN, &before);
+        }
+        getrusage(RUSAGE_CHILDREN, &after);
+        printf("Terminated in background by exit in foreground: \n");
+        handle_status(&before, &after, &status);
+
+        sigrelse(SIGTERM);
+    }
+}
+
 void setup_sigterm_handler() {
     struct sigaction sa;
-    sa.sa_handler = handle_interrupt;
+    sa.sa_handler = handle_sigterm;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART; /* Restart functions if
                                  interrupted by handler */
