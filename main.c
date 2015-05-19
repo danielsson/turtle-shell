@@ -34,8 +34,6 @@ char last_dir[PATH_MAX] = {0};
 
 void run_child(char *const *args, const char *command);
 
-void close_all_pipes(const int *fd_descriptor_env_sort, const int *fd_descriptor_sort_pager);
-
 /**
  * Count the number of arguments in a string.
  */
@@ -159,7 +157,7 @@ void cmd_exit() {
 
     is_running = FALSE;
 
-    printf("exiting\n");
+    printf("\xF0\x9F\x9A\x80  exiting\n");
 }
 
 /**
@@ -216,11 +214,18 @@ void check_return_value(int return_value, const char *msg) {
 }
 
 
-void close_all_pipes(const int *fd_descriptor_env_sort, const int *fd_descriptor_sort_pager) {
+void close_all_pipes(const int *fd_descriptor_env_sort, const int *fd_descriptor_sort_pager, const int *fd_descriptor_grep_sort) {
+    if(fd_descriptor_env_sort[PIPE_WRITE] == 0 || fd_descriptor_env_sort[PIPE_READ] == 0) puts("WRONG 1");
     close_pipe(fd_descriptor_env_sort[PIPE_WRITE]);
     close_pipe(fd_descriptor_env_sort[PIPE_READ]);
+
+    if(fd_descriptor_sort_pager[PIPE_WRITE] == 0 || fd_descriptor_sort_pager[PIPE_READ] == 0) puts("WRONG 2");
     close_pipe(fd_descriptor_sort_pager[PIPE_WRITE]);
     close_pipe(fd_descriptor_sort_pager[PIPE_READ]);
+
+    if(fd_descriptor_grep_sort[PIPE_WRITE] == 0 || fd_descriptor_grep_sort[PIPE_READ] == 0) puts("WRONG 3");
+    close_pipe(fd_descriptor_grep_sort[PIPE_WRITE]);
+    close_pipe(fd_descriptor_grep_sort[PIPE_READ]);
 }
 
 
@@ -256,13 +261,16 @@ void wait_for_child() {
 void cmd_check_env(char *args[ARGS_SIZE]) {
     int fd_descriptor_env_sort[2];
     int fd_descriptor_sort_pager[2];
-    pid_t env_child, sort_child, pager_child;
+    int fd_descriptor_grep_sort[2];
+    pid_t env_child, sort_child, grep_child, pager_child;
+    int grep = FALSE;
     int return_value;
 
     sighold(SIGCHLD);
 
     create_pipe(fd_descriptor_env_sort);
     create_pipe(fd_descriptor_sort_pager);
+    create_pipe(fd_descriptor_grep_sort);
 
     env_child = fork();
 
@@ -270,7 +278,7 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
         return_value = dup2(fd_descriptor_env_sort[PIPE_WRITE], STDOUT_FILENO);
         check_return_value(return_value, "Error: cannot dup2 1");
 
-        close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager);
+        close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager, fd_descriptor_grep_sort);
 
         print_environment();
         exit(EXIT_SUCCESS);
@@ -280,20 +288,67 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
         exit(EXIT_FAILURE);
     }
 
+    if(args[1] != NULL) {
+        grep = TRUE;
+        grep_child = fork();
+
+        if(grep_child == 0) {
+            return_value = dup2(fd_descriptor_env_sort[PIPE_READ], STDIN_FILENO);
+            check_return_value(return_value, "Error: cannot dup2 2");
+
+            return_value = dup2(fd_descriptor_grep_sort[PIPE_WRITE], STDOUT_FILENO);
+            check_return_value(return_value, "Error: cannot dup2 3");
+
+            close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager, fd_descriptor_grep_sort);
+
+
+            args[0] = "grep";
+
+            return_value = execvp(args[0], args);
+            check_return_value(return_value, "Error: execution failed.");
+
+
+        } else if(grep_child == -1){
+            perror("Error forking.");
+            exit(EXIT_FAILURE);
+        }
+
+
+    }
+
     sort_child = fork();
 
     if (sort_child == 0) {
-        return_value = dup2(fd_descriptor_env_sort[PIPE_READ], STDIN_FILENO);
-        check_return_value(return_value, "Error: cannot dup2 2");
+        if(grep == TRUE) {
+            puts("IN HERE1");
+            return_value = dup2(fd_descriptor_grep_sort[PIPE_READ], STDIN_FILENO);
+            check_return_value(return_value, "Error: cannot dup2 2");
+            puts("IN HERE2");
+            printf("%i, %i", fd_descriptor_sort_pager[PIPE_READ], fd_descriptor_sort_pager[PIPE_WRITE]);
+            return_value = dup2(fd_descriptor_sort_pager[PIPE_WRITE], STDOUT_FILENO);
+            check_return_value(return_value, "Error: cannot dup2 3");
+            puts("IN HERE");
+            close_all_pipes(fd_descriptor_grep_sort, fd_descriptor_sort_pager, fd_descriptor_grep_sort);
+            puts("IN HERE");
+            args[0] = "sort";
 
-        return_value = dup2(fd_descriptor_sort_pager[PIPE_WRITE], STDOUT_FILENO);
-        check_return_value(return_value, "Error: cannot dup2 3");
+            return_value = execvp(args[0], args);
+            check_return_value(return_value, "Error: execution failed.");
 
-        close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager);
+        } else {
+            return_value = dup2(fd_descriptor_env_sort[PIPE_READ], STDIN_FILENO);
+            check_return_value(return_value, "Error: cannot dup2 2");
 
-        args[0] = "sort";
-        return_value = execvp(args[0], args);
-        check_return_value(return_value, "Error: execution failed.");
+            return_value = dup2(fd_descriptor_sort_pager[PIPE_WRITE], STDOUT_FILENO);
+            check_return_value(return_value, "Error: cannot dup2 3");
+
+            close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager, fd_descriptor_grep_sort);
+
+            args[0] = "sort";
+
+            return_value = execvp(args[0], args);
+            check_return_value(return_value, "Error: execution failed.");
+        }
 
     } else if (sort_child == -1) {
         perror("Error forking.");
@@ -307,7 +362,7 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
         return_value = dup2(fd_descriptor_sort_pager[PIPE_READ], STDIN_FILENO);
         check_return_value(return_value, "Error: cannot dup2 4");
 
-        close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager);
+        close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager, fd_descriptor_grep_sort);
 
         if(getenv("PAGER") != NULL) {
             argp[0] = getenv("PAGER");
@@ -321,11 +376,13 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
         exit(EXIT_FAILURE);
     }
 
-    close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager);
+    close_all_pipes(fd_descriptor_env_sort, fd_descriptor_sort_pager, fd_descriptor_grep_sort);
 
+    printf("%i %i %i %i\n", env_child, grep_child, sort_child, pager_child);
     wait_for_child();
     wait_for_child();
     wait_for_child();
+    if(grep == TRUE) wait_for_child();
 
     sigrelse(SIGCHLD);
 }
