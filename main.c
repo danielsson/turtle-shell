@@ -554,8 +554,11 @@ void setup_interrupt_signal_handler() {
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP; /* Restart functions if
                                  interrupted by handler */
-    if (sigaction(SIGINT, &sa, NULL) == -1)
-        /* Handle error */;
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("sigaction failed.");
+        exit(EXIT_FAILURE);
+    }
+
 }
 
 /**
@@ -582,10 +585,8 @@ int main(int argc, char *argv[]) {
         printf(" \xF0\x9F\x90\xA2  " ANSI_COLOR_GREEN);
         fgets(command, CMD_LEN, stdin);
 
-
         remove_trailing_nl(command);
         tokenize(command, args);
-
 
         putz(ANSI_COLOR_RESET);
 
