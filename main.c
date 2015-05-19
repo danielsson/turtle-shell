@@ -16,14 +16,16 @@
 #define CMD_LEN 80
 #define ARGS_SIZE 5
 
+
 #define SIGDET TRUE
 
-#define ANSI_COLOR_RED     "\x1b[31m"
+#ifdef __APPLE__
+#define SAY_TURTLE TRUE
+#else
+#define SAY_TURTLE FALSE
+#endif
+
 #define ANSI_COLOR_GREEN   "\x1b[32m"
-#define ANSI_COLOR_YELLOW  "\x1b[33m"
-#define ANSI_COLOR_BLUE    "\x1b[34m"
-#define ANSI_COLOR_MAGENTA "\x1b[35m"
-#define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 #define putz puts
 
@@ -32,7 +34,11 @@ extern char **environ;
 int is_running = TRUE;
 char last_dir[PATH_MAX] = {0};
 
+
+
 void run_child(char *const *args, const char *command);
+
+void setup_sigterm_handler();
 
 /**
  * Count the number of arguments in a string.
@@ -147,7 +153,7 @@ void cmd_ls() {
  */
 void cmd_exit() {
 
-    kill(-2, SIGKILL);
+    kill(-getpid(), SIGTERM);
 
     if (!SIGDET) {
         pid_t p;
@@ -167,7 +173,12 @@ void cmd_cd(char *args[ARGS_SIZE]) {
     char current[PATH_MAX];
     getcwd((char *) &current, PATH_MAX);
 
-    if (args[1][0] == '-' && last_dir[0] != 0) {
+    if (args[1] == NULL) {
+        if (chdir(getenv("HOME")) == -1) {
+            perror("Failed to chdir");
+        }
+        return;
+    } else if (args[1][0] == '-' && last_dir[0] != 0) {
         chdir((const char *) &last_dir);
         return;
     } else if (args[1][0] == '-') {
@@ -268,7 +279,6 @@ void cmd_check_env(char *args[ARGS_SIZE]) {
     create_pipe(fd_descriptor_env_sort);
     create_pipe(fd_descriptor_sort_pager);
     create_pipe(fd_descriptor_grep_sort);
-
     env_child = fork();
 
     if (env_child == 0) {
@@ -397,10 +407,12 @@ void foreground(char *args[ARGS_SIZE]) {
 
     char *command = args[0];
 
+    pid_t group_id = getpid();
     pid_t pid;
     pid = fork();
     if (pid == 0) {
         /* Child */
+        setpgid(0, group_id);
         run_child(args, command);
 
     } else if (pid > 0) {
@@ -409,6 +421,7 @@ void foreground(char *args[ARGS_SIZE]) {
         struct rusage before;
         struct rusage after;
 
+        setpgid(pid, group_id);
 
         if (getrusage(RUSAGE_CHILDREN, &before) == -1) {
             perror("Catastrophic failure");
@@ -450,16 +463,23 @@ void background(char *args[ARGS_SIZE]) {
     char *command = args[0];
 
     pid_t pid;
+    pid_t group_id = getpid();
+    int return_value = 0;
 
     signal(SIGINT, SIG_IGN);
 
     pid = fork();
 
     if (pid == 0) {
+        return_value = setpgid(0, group_id);
+        check_return_value(return_value, "FAILED DUDE");
 
         run_child(args, command);
         return;
 
+    } else if (pid > 0) {
+        return_value = setpgid(pid, group_id);
+        check_return_value(return_value, "FAILED DUDE2");
     } else if (pid < 0) {
         /* System fork err */
         printf("Fork failed");
@@ -548,6 +568,7 @@ static void handle_interrupt(int sig) {
 }
 
 
+
 void setup_interrupt_signal_handler() {
     struct sigaction sa;
     sa.sa_handler = handle_interrupt;
@@ -561,6 +582,19 @@ void setup_interrupt_signal_handler() {
 
 }
 
+void setup_sigterm_handler() {
+    struct sigaction sa;
+    sa.sa_handler = handle_interrupt;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART; /* Restart functions if
+                                 interrupted by handler */
+    if (sigaction(SIGTERM, &sa, NULL) == -1) {
+        perror("sigaction failed.");
+        exit(EXIT_FAILURE);
+    }
+}
+
+
 /**
  * Get arguments from standard in and execute the commands. e
  */
@@ -569,19 +603,22 @@ int main(int argc, char *argv[]) {
     char command[CMD_LEN];
     int len;
 
+    if (SIGDET)
+        setup_signal_handler();
+
+    setup_sigterm_handler();
 
     while (is_running) {
         char *args[ARGS_SIZE] = {0};
         memset(command, 0, CMD_LEN);
 
-        if (SIGDET)
-            setup_signal_handler();
-        else
-            poll_background_children();
+
+        if(!SIGDET) poll_background_children();
 
         setup_interrupt_signal_handler();
 
         /* Command prompt */
+        if (SAY_TURTLE) system("say \"turtle\"");
         printf(" \xF0\x9F\x90\xA2  " ANSI_COLOR_GREEN);
         fgets(command, CMD_LEN, stdin);
 
@@ -607,3 +644,4 @@ int main(int argc, char *argv[]) {
     putz("TODO: Fix the exit command and set up a signal handler for it. ");
     return 0;
 }
+
