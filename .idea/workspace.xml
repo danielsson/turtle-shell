@@ -14,7 +14,6 @@
   <component name="ChangeListManager">
     <list default="true" id="42ded99d-b1d3-4fa3-a7f3-36dd5c7c8d01" name="Default" comment="Even more broken now.">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/main.c" afterPath="$PROJECT_DIR$/main.c" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
     </list>
     <ignored path="turtle-shell.iws" />
     <ignored path=".idea/workspace.xml" />
@@ -58,8 +57,8 @@
       <file leaf-file-name="main.c" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/main.c">
           <provider selected="true" editor-type-id="text-editor">
-            <state vertical-scroll-proportion="0.36305732">
-              <caret line="588" column="4" selection-start-line="588" selection-start-column="4" selection-end-line="588" selection-end-column="4" />
+            <state vertical-scroll-proportion="0.84076434">
+              <caret line="665" column="4" selection-start-line="665" selection-start-column="4" selection-end-line="665" selection-end-column="4" />
               <folding>
                 <element signature="e#0#17#0" expanded="true" />
                 <element signature="e#388#412#0" expanded="true" />
@@ -604,8 +603,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/main.c">
       <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.36305732">
-          <caret line="588" column="4" selection-start-line="588" selection-start-column="4" selection-end-line="588" selection-end-column="4" />
+        <state vertical-scroll-proportion="0.84076434">
+          <caret line="665" column="4" selection-start-line="665" selection-start-column="4" selection-end-line="665" selection-end-column="4" />
           <folding>
             <element signature="e#0#17#0" expanded="true" />
             <element signature="e#388#412#0" expanded="true" />

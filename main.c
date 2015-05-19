@@ -586,7 +586,7 @@ static void handle_sigterm(int sig) {
     int status;
     struct rusage before;
     struct rusage after;
-    
+
 
     if(sig == SIGTERM) {
         sighold(SIGTERM);
@@ -663,7 +663,7 @@ int main(int argc, char *argv[]) {
         }
 
     }
-    putz("TODO: Fix the exit command and set up a signal handler for it. ");
+    
     return 0;
 }
 
