@@ -1,14 +1,4 @@
-#include "main.h"
-#include <stdio.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <string.h>
-#include <dirent.h>
-#include <signal.h>
-#include <errno.h>
-#include <sys/time.h>
-#include <sys/syslimits.h>
-
+#define _XOPEN_SOURCE 500
 #define TRUE 1
 #define FALSE 0
 #define PIPE_READ 0
@@ -17,7 +7,34 @@
 #define ARGS_SIZE 5
 
 
+
+#include "main.h"
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dirent.h>
+#include <signal.h>
+#include <errno.h>
+#include <linux/limits.h>
+#include <sys/time.h>
+#include <sys/wait.h>
+
+
+
+
 #define SIGDET TRUE
+
+#define	timersub(tvp, uvp, vvp)						\
+	do {								\
+		(vvp)->tv_sec = (tvp)->tv_sec - (uvp)->tv_sec;		\
+		(vvp)->tv_usec = (tvp)->tv_usec - (uvp)->tv_usec;	\
+		if ((vvp)->tv_usec < 0) {				\
+			(vvp)->tv_sec--;				\
+			(vvp)->tv_usec += 1000000;			\
+		}							\
+	} while (0)
+
 
 #ifdef __APPLE__
 #define SAY_TURTLE FALSE
@@ -57,10 +74,10 @@ void print_time(struct rusage *before, struct rusage *after) {
     struct timeval diff;
 
     timersub(&after->ru_stime, &before->ru_stime, &diff);
-    printf(" \xE2\x8F\xB3  System time: %ld.%05i\t", diff.tv_sec, diff.tv_usec);
+    printf(" \xE2\x8F\xB3  System time: %ld.%05ld\t", diff.tv_sec, diff.tv_usec);
 
     timersub(&after->ru_utime, &before->ru_utime, &diff);
-    printf("User time: %ld.%05i\t", diff.tv_sec, diff.tv_usec);
+    printf("User time: %ld.%05ld\t", diff.tv_sec, diff.tv_usec);
 }
 
 
@@ -134,7 +151,7 @@ void cmd_ls() {
     putz("");
     if (dir != NULL) {
         while ((ep = readdir(dir))) {
-            if(ep->d_type == DT_DIR) {
+            if(ep->d_type == 4) {
                 printf(" \xF0\x9F\x8D\xB0  %s \n", ep->d_name);
             } else {
                 printf(" \xF0\x9F\x8D\x93  %s \n", ep->d_name);
