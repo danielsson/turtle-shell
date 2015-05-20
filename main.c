@@ -48,13 +48,15 @@
 
 extern char **environ;
 
+
 int is_running = TRUE;
+
 char last_dir[PATH_MAX] = {0};
 
-
-
+/*
+ * Forward Declarations
+ */
 void run_child(char *const *args, const char *command);
-
 void setup_sigterm_handler();
 
 /**
@@ -110,7 +112,7 @@ void handle_status(struct rusage *before, struct rusage *after, int *status) {
 
 
 /*
- * Splits a string into an array of strings with single space as delimiter.
+ * Splits a string into an array of strings in-place.
  */
 void tokenize(char *command, char *into[ARGS_SIZE]) {
     char *ptr = command;
@@ -210,6 +212,10 @@ void cmd_cd(char *args[ARGS_SIZE]) {
     }
 }
 
+
+/*
+ * Helper function to create a pipe or print an error and die.
+ */
 void create_pipe(int p[2]) {
     if (pipe(p) == -1) {
         perror("ERROR CREATING PIPE");
@@ -217,6 +223,9 @@ void create_pipe(int p[2]) {
     }
 }
 
+/**
+ * Helper function to close a pipe end or print an error-
+ */
 void close_pipe(int fd) {
     if (close(fd) == -1) {
         fprintf(stderr, "Error closing: %i", fd);
@@ -225,6 +234,9 @@ void close_pipe(int fd) {
     }
 }
 
+/**
+ * Prints the environment to stdout.
+ */
 void print_environment() {
     char **pt = environ;
 
@@ -234,6 +246,9 @@ void print_environment() {
 }
 
 
+/**
+ * check that the return value is not an error.
+ */
 void check_return_value(int return_value, const char *msg) {
     if (return_value == -1) {
         perror(msg);
@@ -242,6 +257,9 @@ void check_return_value(int return_value, const char *msg) {
 }
 
 
+/**
+ * Helper function to close all ends of the specified pipes.
+ */
 void close_all_pipes(const int *fd_descriptor_env_sort, const int *fd_descriptor_sort_pager, const int *fd_descriptor_grep_sort) {
     close_pipe(fd_descriptor_env_sort[PIPE_WRITE]);
     close_pipe(fd_descriptor_env_sort[PIPE_READ]);
@@ -254,6 +272,9 @@ void close_all_pipes(const int *fd_descriptor_env_sort, const int *fd_descriptor
 }
 
 
+/**
+ * Wait for a child to terminate.
+ */
 void wait_for_child() {
     int status;
     pid_t child_pid;
@@ -279,10 +300,10 @@ void wait_for_child() {
     }
 }
 
-/*
- * PIPING
- */
 
+/**
+ * execute the checkEnv command.
+ */
 void cmd_check_env(char *args[ARGS_SIZE]) {
     int fd_descriptor_env_sort[2];
     int fd_descriptor_sort_pager[2];
@@ -582,10 +603,13 @@ void setup_signal_handler() {
 
 static void handle_interrupt(int sig) {
     /* THIS IS WHERE THE MAGIC HAPPENS */
+	/* Do noting, just let SIGINT pass. */
 }
 
 
-
+/**
+ * Setup a signal handler for SIGINT
+ */
 void setup_interrupt_signal_handler() {
     struct sigaction sa;
     sa.sa_handler = handle_interrupt;
@@ -599,6 +623,8 @@ void setup_interrupt_signal_handler() {
 
 }
 
+
+/** Handle SIGTERM, do not let ourselfs commit suicide. */
 static void handle_sigterm(int sig) {
     int status;
     struct rusage before;
@@ -621,6 +647,10 @@ static void handle_sigterm(int sig) {
     }
 }
 
+
+/**
+ * Setup the handler for SIGTERM
+ */
 void setup_sigterm_handler() {
     struct sigaction sa;
     sa.sa_handler = handle_sigterm;
